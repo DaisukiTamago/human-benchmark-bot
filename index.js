@@ -1,80 +1,39 @@
-import puppeteer from 'puppeteer'
+import puppeteer from "puppeteer"
 
+const browser = await puppeteer.launch({ headless: false })
+const tab = ( await browser.pages() )[0]
 
-(async () => {
-    const wordsList = []
-    //const browserWSEndpoint = "ws://127.0.0.1:2222/devtools/browser/c9a9b42e-4b40-4d5d-91c9-b43b026b7c7b"
-    const browser = await puppeteer.launch({ headless: false })
-    const newTab = await browser.newPage()
+const seenWords = new Array()
+let currentWord = ""
 
-    const page = await newTab.goto("https://humanbenchmark.com/tests/verbal-memory", { waitUntil: 'domcontentloaded' })
+await tab.goto("https://humanbenchmark.com/tests/verbal-memory", { waitUntil: "domcontentloaded" })
+await tab.waitForTimeout(3000)
 
-    console.log(page.statusText())
-    console.log(page.status())
+const [startButton] = await tab.$x("//button[contains(., 'Start')]")
+await startButton.click()
+await tab.waitForTimeout(1000)
 
-    if (page.status()) {
-        console.log('waiting...')
-        await newTab.waitForTimeout(3000)
-        //await newTab.screenshot({path: "scr.png"})
+const [seenButton] = await tab.$x("//button[contains(., 'SEEN')]")
+const [newButton] = await tab.$x("//button[contains(., 'NEW')]")
 
+async function getCurrentWord() {
+    return tab.evaluate(() => document.querySelector('.word').textContent)
+}
 
-        console.log('searching for start button...')
-        const startButton = (await newTab.$$('button'))[1]
-        console.log('clicking start button...')
-        await startButton.click()
+async function botDecisionLoop() {
 
-        console.log('waiting....')
-        await newTab.waitForTimeout(2000)
+    currentWord = await getCurrentWord()
 
-        console.log('looking for word container...')
-        console.log('capturing buttons...')
-        const [seenButton] = await newTab.$x("//button[contains(., 'SEEN')]")
-        const [newButton] = await newTab.$x("//button[contains(., 'NEW')]")
-
-        async function getNewWord() {
-            console.log("fetching new word....")
-            return newTab.evaluate(() => {
-                let wordValue = document.querySelector('.word').textContent
-                return wordValue
-            })
-        }
-
-        async function bot() {
-
-            const word = await getNewWord()
-
-            if (wordsList.length == 0) {
-
-                wordsList.push(word)
-                await newButton.click()
-
-            } else {
-
-                if (wordsList.includes(word)) {
-
-                    await seenButton.click()
-
-                } else {
-
-                    await newButton.click()
-                    wordsList.push(word)
-                }
-            }
-
-            await newTab.waitForTimeout(1000)
-            console.log('list: ', wordsList)
-            await bot()
-        }
-
-
-        await bot()
-
-
+    if (seenWords.includes(currentWord)) {
+        await seenButton.click()
     } else {
-        console.log("Unable to load webpage")
+        seenWords.push(currentWord)
+        await newButton.click()
     }
 
+    await tab.waitForTimeout(50)
+    await botDecisionLoop()
 
-    browser.disconnect()
+}
 
-})()
+await botDecisionLoop()
